@@ -1,29 +1,38 @@
 # ////////////////////////////////////////////////////////////////////////////////////////////////////// #
-# ///////////////////////////////////////////// # ATRIBUTOS # ////////////////////////////////////////// #
+# ///////////////////////////////////////////// # LIBRERIAS # ////////////////////////////////////////// #
 # ////////////////////////////////////////////////////////////////////////////////////////////////////// #
-
+library(arules)
+library(arulesViz)
+library(tidyverse)
+library(plyr)
+library(knitr)
 library(ggpubr)
 library(cowplot)
 library(corrplot)
 library(factoextra)
 library(gridExtra)
 library(RColorBrewer)
+library(lubridate)
 library(tidyr)
 
-# - code: Numero del cÛdigo de la muestra
+# ////////////////////////////////////////////////////////////////////////////////////////////////////// #
+# ///////////////////////////////////////////// # ATRIBUTOS # ////////////////////////////////////////// #
+# ////////////////////////////////////////////////////////////////////////////////////////////////////// #
+
+# - code: Numero del c√≥digo de la muestra
 # - clumpThickness: Grosor del grupo (1 - 10)
-# - unifCellSize: TamaÒo de cÈlula uniforme (1 - 10)
-# - unifCellShape: Forma de cÈlula uniforme (1 - 10)
-# - marginalAdhesion: AdhesiÛn marginal (1 - 10)
-# - epithCellSize: TamaÒo de cÈlula epitelial (1 - 10)
-# - bareNuclei: N˙cleos desnudos (1 - 10)
+# - unifCellSize: Tama√±o de c√©lula uniforme (1 - 10)
+# - unifCellShape: Forma de c√©lula uniforme (1 - 10)
+# - marginalAdhesion: Adhesi√≥n marginal (1 - 10)
+# - epithCellSize: Tama√±o de c√©lula epitelial (1 - 10)
+# - bareNuclei: N√∫cleos desnudos (1 - 10)
 # - blandChromatin: Cromatina suave (1 - 10)
 # - normalNucleoli: Nucleolos normales (1 - 10) 
 # - mitoses: Mitosis (1 - 10)
 # - class: Clase (2 para BENIGNO, 4 para MALIGNO)
 
-# Se crean los nombres que representaran a cada columna, relativos a los par·metros que son de relevancia
-# en cada observaciÛn.
+# Se crean los nombres que representaran a cada columna, relativos a los par√°metros que son de relevancia
+# en cada observaci√≥n.
 columns = c("code",
             "clumpThickness",
             "unifCellSize",
@@ -48,12 +57,9 @@ set.seed(20)
 # ///////////////////////////////////////// # PRE-PROCESAMIENTO # ////////////////////////////////////// #
 # ////////////////////////////////////////////////////////////////////////////////////////////////////// #
 
-#________________________________________________________________________________________________________#
-# I. MISSING VALUES
-
 # Se sabe que el conjunto de datos cuenta con 16 observaciones que presentan missing values para 
 # la variable "bareNuclei", denotados por un caracter "?", sin embargo el lenguaje R normalmente
-# asocia este tipo de valores con el sÌmbolo "NA" al igual que todos los paquetes relativos a los
+# asocia este tipo de valores con el s√≠mbolo "NA" al igual que todos los paquetes relativos a los
 # missing values, por lo que para trabajar de mejor manera se procede a cambiar los "?" por "NA".
 df.n = nrow(df)
 df.m = ncol(df)
@@ -66,45 +72,61 @@ for (row in 1:df.n) {
   }
 }
 
-# Debido a que la variable bareNuclei contenÌa valores "?" la variable esta clasificada como de tipo
+# Debido a que la variable bareNuclei conten√≠a valores "?" la variable esta clasificada como de tipo
 # "character". por lo que es necesario modificarla para que sea del tipo "integer".
 df$bareNuclei <- as.integer(df$bareNuclei)
 
 # Una de las formas de manejar los valores omitidos, consiste en simplemente eliminar cada
-# observaciÛn que en sus variables presente uno o mas missing values, metodo conocido como 
-# "Listwise Deletion", ahora bien la simplicidad de este mÈtodo viene perjudicado por el hecho de que el
-# modelo pierde fuerza, ya que se pierde informaciÛn relevante, ahora bien dependiendo de la razÛn entre
+# observaci√≥n que en sus variables presente uno o mas missing values, m√©todo conocido como 
+# "Listwise Deletion", ahora bien la simplicidad de este m√©todo viene perjudicado por el hecho de que el
+# modelo pierde fuerza, ya que se pierde informaci√≥n relevante, ahora bien dependiendo de la raz√≥n entre
 # el numero de observaciones que presentan missing values y el total de observaciones, puede afectar en
-# menor o mayor medida la precisiÛn del modelo para predecir una variable de estudio. En este caso, razÛn
-# de observaciones que se perderÌan al aplicar este mÈtodo corresponde a un 2.3% aproximadamente,
-# un numero bastante bajo para considerar este mÈtodo.
+# menor o mayor medida la precisi√≥n del modelo para predecir una variable de estudio. En este caso, raz√≥n
+# de observaciones que se perder√≠an al aplicar este m√©todo corresponde a un 2.3% aproximadamente,
+# un numero bastante bajo para considerar este m√©todo.
 df <- na.omit(df)
 
 # Almacenamos el conjunto de datos original, en caso de realizar modificaciones posteriores y no 
 # afectar los datos del conjunto inicial, y necesitar estos datos originales.
 df.original <- df
 
+# Quitamos la primera variable ya que el c√≥digo no aporta ninguna informaci√≥n de inter√©s para la creaci√≥n
+# de reglas
+
+df <- subset(df, select = -c(code))
+
+# Ahora dado que el dominio para cada una de las variables es discreto, y que estos van desde el 1 al 10, 
+# es posible convertir cada una de estas variables enteras, a variables de tipo "factor", a excepci√≥n
+# de la variable "class", la cual tiene un comportamiento distinto tomando solo dos valores 2 y 4.
+
+df[, 1:9] = lapply(df[, 1:9], factor)
+
+df$class = factor(
+  df$class, 
+  levels = c(2, 4), 
+  labels = c("Benigno", "Maligno"))
+
 # ////////////////////////////////////////////////////////////////////////////////////////////////////// #
 # //////////////////////////////////////// # REGLAS DE ASOCIACION # //////////////////////////////////// #
 # ////////////////////////////////////////////////////////////////////////////////////////////////////// #
 
-# La minerÌa de Reglas de AsociaciÛn es utilizada cuando se busca encontrar una asociaciÛn entre
+# La miner√≠a de Reglas de Asociaci√≥n es utilizada cuando se busca encontrar una asociaci√≥n entre
 # diferentes objetos en un conjunto de datos, tales como patrones que se repiten con frecuencia en 
-# una base de datos transaccional, bases de datos relacionales u alg˙n otro tipo de repositorio de 
-# informaciÛn como lo es este caso. Estas reglas est·n fundamento en el "marketing", en el denominado
-# "An·lisis de la Canasta de Mercado", en el "retail", "clustering" y "clasificaciÛn". Es ˙til para 
-# identificar que artÌculos son comprados frecuentemente y de manera conjunta por los clientes, a 
-# travÈs de la generaciÛn de un conjunto de reglas denominadas como "Reglas de AsociaciÛn".
+# una base de datos transaccional, bases de datos relacionales u alg√∫n otro tipo de repositorio de 
+# informaci√≥n como lo es este caso. Estas reglas est√°n fundamento en el "marketing", en el denominado
+# "An√°lisis de la Canasta de Mercado", en el "retail", "clustering" y "clasificaci√≥n". Es √∫til para 
+# identificar que art√≠culos son comprados frecuentemente y de manera conjunta por los clientes, a 
+# trav√©s de la generaci√≥n de un conjunto de reglas denominadas como "Reglas de Asociaci√≥n".
 
-# Aplicando los fundamentos de las reglas de asociaciÛn, en el contexto del estudio presente, como
+# Aplicando los fundamentos de las reglas de asociaci√≥n, en el contexto del estudio presente, como
 # primicia se puede decir que estas permiten entre otras cosas, determinar que variables de estudio
 # en las muestras de tejido recopiladas por un hospital X, tienen tendencia a tomar cierto rango de 
-# valores, considerando los valores de otras variables. Aun mas especÌficamente, considerando
-# la variable explicativa "class", podrÌa determinarse que un conjunto de caracterÌsticas en las
-# cÈlulas de las muestras de tejidos observadas, tienden a mostrar un determinado patrÛn que
-# podrÌa incidir en el valor que toma la variable explicativa, u otra variable de la muestra.
+# valores, considerando los valores de otras variables. Aun mas espec√≠ficamente, considerando
+# la variable explicativa "class", podr√≠a determinarse que un conjunto de caracter√≠sticas en las
+# c√©lulas de las muestras de tejidos observadas, tienden a mostrar un determinado patr√≥n que
+# podr√≠a incidir en el valor que toma la variable explicativa, u otra variable de la muestra.
 
-# Una Regla de AsociaciÛn se estructura de la siguiente manera:
+# Una Regla de Asociaci√≥n se estructura de la siguiente manera:
 
 #                                     A => B [Soporte, Confidencia]
 
@@ -113,9 +135,114 @@ df.original <- df
 
 
 #________________________________________________________________________________________________________#
-# I. CONCEPTOS B¡SICOS
+# I. CONCEPTOS B√ÅSICOS
+
+#################
+# a. Soporte    #
+#################
+
+# Fracci√≥n de transacciones que contienen al articulo "X"
+ 
+#                               =========================================
+#                               ==  Soporte (X) = frecuencia (X) / N   ==
+#                               =========================================
+                               
+# Para una regla A => B, el soporte es definido como :
+  
+#                         ====================================================
+#                         ==    Soporte (A => B) = frecuencia (A, B) / N    ==
+#                         ====================================================
+
+###################
+# b. Confianza    #
+###################
+
+# Para una regla A => B el soporte explica la probabilidad de que al escoger el √≠tem A, se escoja el √≠tem
+# B, y matem√°ticamente se calcula como el numero total de transacciones que implica a "A" y "B", dividido
+# por el total de transacciones que implican a "A", tal como se muestra a continuaci√≥n:
+
+#                           =================================================             
+#                           ==    Confianza (A => B) = P(A ‚à© B) / P(A)     ==  
+#                           =================================================  
+
+#                    =============================================================== 
+#                    ==  Confianza (A => B) = frecuencia (A, B) / frecuencia (A)  ==
+#                    ===============================================================
+
+#                      ========================================================== 
+#                      ==  Confianza (A => B) = Soporte (A ‚à© B) / Soporte (A)  ==
+#                      ==========================================================
+
+# *********************************************************************************************************
+# * Tanto el Soporte como la Confianza determinan cuan INTERESANTE es una regla, par√°metro el cual es     *
+# * en base a un umbral de inter√©s, entonces mientras mas cerca est√©n estos valores de ese umbral, mas    *
+# * y √∫til es la regla para el cliente (en el contexto de la canasta de mercado). Una regla INTERSEANTE   *
+# * es aquella que es FRECUENTE y CONFIABLE a la vez, donde:                                              *
+# *                                                                                                       *
+# * -> El conjunto de reglas CONFIABLES se entiende que es el conjunto de todas las reglas que cumplen    *
+# *    con una CONFIANZA M√çNIMA "minconf"                                                                 *
+# *                                                                                                       *
+# * -> El conjunto de reglas FRECUENTES se entiende que es el conjunto de todas las reglas que cumplen    *
+# *    con un SOPORTE M√çNIMO "minsop"                                                                     *
+# *********************************************************************************************************
 
 
-# - Soporte: FracciÛn de transacciones que contienen al articulo "X"
+#________________________________________________________________________________________________________#
+# II. MEDIDAS DE CALIDAD
 
-#                                   Soporte (X) = frecuencia (X) / N
+
+
+#________________________________________________________________________________________________________#
+# III. ALGORITMO APRIORI
+
+# La Miner√≠a de Reglas de Asociaci√≥n considera dos pasos fundamentales, los cuales son:
+
+# 1. Generaci√≥n de Conjuntos Frecuentes: Encontrar todos los conjunto de items FRECUENTES, que cuenten
+#    con un SOPORTE >= minsop.
+
+# 2. Generaci√≥n de Reglas: Listar todas las Reglas de Asociaci√≥n para los Conjuntos Frecuentes. Luego 
+#    determinar el soporte y la confianza para todas las reglas. Finalmente eliminar aquellas reglas que 
+#    est√°n por debajo de "minsop" y "minconf"
+
+# Para aplicar el algoritmo anterior en R, existe una funci√≥n dedicada a esta tarea llamada "apriori",
+# funci√≥n en la cual es necesario desde luego especificar los umbrales anteriormente mencionados,
+# relativos tanto al soporte m√≠nimo, como a la confianza m√≠nima. As√≠ tambi√©n es posible restringir
+# el CONSECUENTE de las reglas que se generaran, a una caracter√≠stica especifica del conjunto de datos, y
+# que desde luego depende de la naturaleza del problema, y de que relaciones dan valor al problema de 
+# estudio.
+
+# Considerando el estudio bajo el cual se recabaron los datos, seria interesante determinar la relaci√≥n 
+# existente a partir de la variable "class" dada (2 = Benigno, 4 = Maligno), junto con las dem√°s 
+# caracter√≠sticas del conjunto de datos. En el √°mbito medico, seria posible determinar el diagnostico 
+# de c√°ncer de una persona, a partir de las caracter√≠sticas las c√©lulas pertenecientes a una muestra de
+# tejido, en cuanto a que valores toman en una determinada m√©trica.
+
+# Entonces dado lo anterior, el CONSECUENTE se establece como la variable "class", del conjunto de datos, 
+# y se especifica en el par√°metro "appeareance"
+
+rules = apriori(
+  data = df, 
+  parameter = list(support = 0.2, minlen = 2, maxlen = 10, target = "rules"),
+  appearance = list(rhs = c("class=Benigno", "class=Maligno"))
+)
+
+
+inspect(sort(x = rules, decreasing = TRUE, by = "confidence"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                         
