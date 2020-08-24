@@ -175,8 +175,8 @@ df$class = factor(
 
 # *********************************************************************************************************
 # * Tanto el Soporte como la Confianza determinan cuan INTERESANTE es una regla, parámetro el cual es     *
-# * en base a un umbral de interés, entonces mientras mas cerca estén estos valores de ese umbral, mas    *
-# * y útil es la regla para el cliente (en el contexto de la canasta de mercado). Una regla INTERSEANTE   *
+# * medido en base a un umbral de interés, entonces mientras mas cerca estén estos valores de ese umbral, *
+# * mas útil es la regla para el cliente (en el contexto de la canasta de mercado). Una regla INTERSEANTE *
 # * es aquella que es FRECUENTE y CONFIABLE a la vez, donde:                                              *
 # *                                                                                                       *
 # * -> El conjunto de reglas CONFIABLES se entiende que es el conjunto de todas las reglas que cumplen    *
@@ -220,16 +220,41 @@ df$class = factor(
 # Entonces dado lo anterior, el CONSECUENTE se establece como la variable "class", del conjunto de datos, 
 # y se especifica en el parámetro "appeareance"
 
+rules.benign = apriori(
+  data = df, 
+  parameter = list(support = 0.2, conf = 0.8, minlen = 2, maxlen = 10, target = "rules"),
+  appearance = list(rhs = c("class=Benigno"))
+)
+
+summary(rules.benign)
+
+rules.malign = apriori(
+  data = df, 
+  parameter = list(support = 0.2, conf = 0.8, minlen = 2, maxlen = 10, target = "rules"),
+  appearance = list(rhs = c("class=Maligno"))
+)
+
+summary(rules.malign)
+
 rules = apriori(
   data = df, 
-  parameter = list(support = 0.2, minlen = 2, maxlen = 10, target = "rules"),
+  parameter = list(support = 0.2, conf = 0.8, minlen = 2, maxlen = 10, target = "rules"),
   appearance = list(rhs = c("class=Benigno", "class=Maligno"))
 )
 
+summary(rules)
 
-inspect(sort(x = rules, decreasing = TRUE, by = "confidence"))
+inspect(sort(x = rules.malign, decreasing = TRUE, by = "confidence"))
 
 
+# Eliminacion de Reglas Redundantes
+
+subset.benign <- which(colSums(is.subset(rules.benign, rules.benign)) > 1)
+subset.malign <- which(colSums(is.subset(rules.malign, rules.malign)) > 1)
+length(subset.benign)
+length(subset.malign)
+
+# subset.association.rules. <- association.rules[-subset.rules]
 
 
 
